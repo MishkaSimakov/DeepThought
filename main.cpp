@@ -1,202 +1,71 @@
-#include <bitset>
 #include <iostream>
-#include <queue>
-#include <set>
-#include <unordered_set>
+
+#include "ConjunctiveNormalForm.h"
+#include "ConjunctiveNormalFormCreator.h"
+#include "Resolver.h"
+#include "ResolverTester.h"
 
 using std::cin, std::cout, std::endl;
 
-template <size_t VariablesCount>
-class ConjuctiveNormalForm {
- public:
-  using DisjunctionT = std::bitset<2 * VariablesCount>;
-
- protected:
-  std::unordered_set<DisjunctionT> disjunctions_;
-
-  struct Variable {
-    size_t index;
-    bool is_negated;
-
-    Variable operator~() const { return {index, !is_negated}; }
-
-    operator DisjunctionT() const {
-      DisjunctionT disjunction;
-      disjunction[index * 2 + (is_negated ? 1 : 0)] = true;
-
-      return disjunction;
-    }
-  };
-
-  struct VariablesList {
-    Variable operator[](size_t index) const { return {index, false}; }
-  };
-
- public:
-  ConjuctiveNormalForm() = default;
-
-  void AddDisjunction(const DisjunctionT& disjunction) {
-    disjunctions_.insert(disjunction);
-  }
-
-  const std::unordered_set<DisjunctionT>& GetDisjunctions() const {
-    return disjunctions_;
-  }
-
-  static VariablesList GetVariables() { return {}; }
-
-  friend DisjunctionT operator|(const Variable& first, const Variable& second) {
-    return static_cast<DisjunctionT>(first) | static_cast<DisjunctionT>(second);
-  }
-
-  friend DisjunctionT operator|(const DisjunctionT& first,
-                                const Variable& second) {
-    return first | static_cast<DisjunctionT>(second);
-  }
-
-  friend DisjunctionT operator|(const Variable& first,
-                                const DisjunctionT& second) {
-    return static_cast<DisjunctionT>(first) | second;
-  }
-};
-
-template <size_t VariablesCount>
-void PrettyPrintDisjunction(const std::bitset<2 * VariablesCount>& disjunct) {
-  bool first_variable = true;
-
-  for (size_t i = 0; i < 2 * VariablesCount; i += 2) {
-    if (!disjunct[i] && !disjunct[i + 1]) {
-      continue;
-    }
-
-    if (!first_variable) {
-      cout << " | ";
-    }
-
-    if (disjunct[i + 1]) {
-      cout << "~";
-    }
-
-    cout << i / 2;
-    first_variable = false;
-  }
-
-  if (first_variable) {
-    cout << "false";
-  }
-}
-
-template <size_t VariablesCount>
-class Resolver {
- protected:
-  using DisjunctionT =
-      typename ConjuctiveNormalForm<VariablesCount>::DisjunctionT;
-
-  struct DisjunctionPair {
-    size_t resolved_size;
-    DisjunctionT resolution_result;
-
-    DisjunctionPair(const DisjunctionT& disjunction)
-        : resolved_size(disjunction.count()), resolution_result(disjunction) {}
-
-    bool operator<(const DisjunctionPair& other) const {
-      if (resolved_size == other.resolved_size) {
-        return resolution_result != other.resolution_result;
-      }
-
-      return resolved_size < other.resolved_size;
-    }
-
-    auto operator<=>(const DisjunctionPair& other) const {
-      return resolved_size <=> other.resolved_size;
-    }
-
-    auto operator==(const DisjunctionPair& other) const {
-      return resolved_size == other.resolved_size &&
-             resolution_result == other.resolution_result;
-    }
-  };
-
-  std::set<DisjunctionPair> queue_;
-  std::unordered_set<DisjunctionT> disjunctions_;
-
-  void AddPairToQueue(const DisjunctionT& first, const DisjunctionT& second) {
-    std::bitset resolved = first | second;
-
-    size_t opposite_count = 0;
-    size_t opposite_bit_index = 0;
-    for (size_t i = 0; i < VariablesCount * 2; i += 2) {
-      // both p and ~p in resolved formula
-      if (resolved[i] && resolved[i + 1]) {
-        opposite_bit_index = i;
-        ++opposite_count;
-      }
-      if (opposite_count >= 2) {
-        return;
-      }
-    }
-
-    if (opposite_count != 1) {
-      return;
-    }
-
-    resolved[opposite_bit_index] = false;
-    resolved[opposite_bit_index + 1] = false;
-
-    if (disjunctions_.contains(resolved)) {
-      return;
-    }
-
-    queue_.emplace(resolved);
-  }
-
-  void FillQueue() {
-    for (auto first_itr = disjunctions_.begin();
-         first_itr != disjunctions_.end(); ++first_itr) {
-      for (auto second_itr = std::next(first_itr);
-           second_itr != disjunctions_.end(); ++second_itr) {
-        AddPairToQueue(*first_itr, *second_itr);
-      }
-    }
-  }
-
- public:
-  Resolver(const std::unordered_set<DisjunctionT>& disjunctions)
-      : disjunctions_(disjunctions) {}
-
-  Resolver(const ConjuctiveNormalForm<VariablesCount>& formula)
-      : disjunctions_(formula.GetDisjunctions()) {}
-
-  bool IsSatisfiable() {
-    FillQueue();
-
-    while (!queue_.empty()) {
-      DisjunctionPair shortest = *queue_.begin();
-      queue_.erase(queue_.begin());
-
-      // if we obtained empty conjunction
-      if (shortest.resolved_size == 0) {
-        return false;
-      }
-
-      for (auto itr = disjunctions_.begin(); itr != disjunctions_.end();
-           ++itr) {
-        AddPairToQueue(shortest.resolution_result, *itr);
-      }
-
-      disjunctions_.insert(shortest.resolution_result);
-    }
-
-    return true;
-  }
-};
-
 int main() {
-  ConjuctiveNormalForm<15> formula;
+  ResolverTests::doResolverTests();
 
-  auto variables = formula.GetVariables();
+  cout << "All tests passed successfully!" << endl;
+  cout << endl;
 
+  // 10 variables for edges
+  constexpr size_t kVariablesCount = 10;
 
-  Resolver resolver(formula);
-  std::cout << resolver.IsSatisfiable() << std::endl;
+  // array that contains variable index for each edge
+  const std::array<std::array<int, 5>, 5> kEdgeIndices = {
+      0, 0, 1, 2, 3, 0, 0, 4, 5, 6, 1, 4, 0,
+      7, 8, 2, 5, 7, 0, 9, 3, 6, 8, 9, 0};
+
+  // generate cnf
+  ConjunctiveNormalForm<kVariablesCount> cnf;
+
+  for (size_t vertex = 0; vertex < 5; ++vertex) {
+    std::bitset<kVariablesCount> used_variables;
+
+    for (size_t other = 0; other < 5; ++other) {
+      if (other == vertex) {
+        continue;
+      }
+
+      used_variables[kEdgeIndices[vertex][other]] = true;
+    }
+
+    ConjunctiveNormalFormCreator<kVariablesCount> cnf_creator(
+        [vertex, kEdgeIndices](
+            const std::array<bool, kVariablesCount>& values) -> bool {
+          bool is_odd = false;
+
+          for (size_t other = 0; other < 5; ++other) {
+            if (other == vertex) {
+              continue;
+            }
+
+            is_odd = is_odd != values[kEdgeIndices[vertex][other]];
+          }
+
+          // without loss of generality we assume that vertex[0] = 1
+          // and \A v \in 1..4: vertex[v] = 0
+          return (vertex != 0) != is_odd;
+        },
+        used_variables);
+    cnf.AddDisjunctions(cnf_creator.Create());
+  }
+
+  // substitute cnf and check
+  Resolver resolver(cnf);
+  cout << "Misha:    O Deep Thought Computer the task I have designed you to "
+          "perform is this. I want you to tell me answer to my homework."
+       << endl;
+  cout << "Computer: Tricky..." << endl;
+  cout << "Misha:    But can you do it?" << endl;
+  cout << "Computer: Yes, I can do it." << endl;
+  cout << "Misha:    There is an answer? A simple answer?" << endl;
+  cout << "Computer: Yes" << endl;
+  cout << "Computer: And here it is: " << std::boolalpha
+       << resolver.IsSatisfiable() << endl;
 }
