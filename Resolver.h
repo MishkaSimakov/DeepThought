@@ -1,63 +1,36 @@
 #ifndef RESOLVER_H
 #define RESOLVER_H
 
-#include <set>
 #include <unordered_set>
 
 #include "ConjunctiveNormalForm.h"
 
 template <size_t VariablesCount>
 class Resolver {
+  static constexpr std::bitset<VariablesCount * 2> kEmptyDisjunct = 0;
+
   static_assert(2 * VariablesCount <= sizeof(unsigned long long) * 8);
 
   using DisjunctionT =
       typename ConjunctiveNormalForm<VariablesCount>::DisjunctionT;
 
-  struct DisjunctionPair {
-    size_t resolved_size;
-    DisjunctionT resolution_result;
-
-    explicit DisjunctionPair(const DisjunctionT& disjunction)
-        : resolved_size(disjunction.count()), resolution_result(disjunction) {}
-
-    bool operator==(const DisjunctionPair& other) const {
-      return resolved_size == other.resolved_size &&
-             resolution_result == other.resolution_result;
+  struct DisjunctionHash {
+    size_t operator()(const DisjunctionT& disjunction) const {
+      return std::hash<unsigned long long>{}(disjunction.to_ullong());
     }
   };
 
-  struct DisjunctionPairHash {
-    size_t operator()(const DisjunctionPair& first) const {
-      return std::hash<unsigned long long>{}(
-          first.resolution_result.to_ullong());
-    }
-  };
-
-  std::unordered_set<DisjunctionPair, DisjunctionPairHash> queue_;
+  std::unordered_set<DisjunctionT, DisjunctionHash> queue_;
   std::unordered_set<DisjunctionT> disjunctions_;
 
   void AddPairToQueue(const DisjunctionT& first, const DisjunctionT& second) {
-    std::bitset resolved = first | second;
+    DisjunctionT resolved;
 
-    size_t opposite_count = 0;
-    size_t opposite_bit_index = 0;
-    for (size_t i = 0; i < VariablesCount * 2; i += 2) {
-      // both p and ~p in resolved formula
-      if (resolved[i] && resolved[i + 1]) {
-        opposite_bit_index = i;
-        ++opposite_count;
-      }
-      if (opposite_count >= 2) {
-        return;
-      }
-    }
+    bool is_correct = Resolver::Resolve(first, second, resolved);
 
-    if (opposite_count != 1) {
+    if (!is_correct) {
       return;
     }
-
-    resolved[opposite_bit_index] = false;
-    resolved[opposite_bit_index + 1] = false;
 
     if (disjunctions_.contains(resolved)) {
       return;
@@ -67,12 +40,8 @@ class Resolver {
   }
 
   void FillQueue() {
-    for (auto first_itr = disjunctions_.begin();
-         first_itr != disjunctions_.end(); ++first_itr) {
-      for (auto second_itr = std::next(first_itr);
-           second_itr != disjunctions_.end(); ++second_itr) {
-        AddPairToQueue(*first_itr, *second_itr);
-      }
+    for (auto& disjunction : disjunctions_) {
+      queue_.emplace(disjunction);
     }
   }
 
@@ -83,28 +52,55 @@ class Resolver {
   Resolver(const ConjunctiveNormalForm<VariablesCount>& formula)
       : disjunctions_(formula.GetDisjunctions()) {}
 
+  static bool Resolve(const DisjunctionT& first, const DisjunctionT& second,
+                      DisjunctionT& resolved) {
+    resolved = first | second;
+
+    size_t opposite_count = 0;
+    size_t opposite_bit_index = 0;
+
+    for (size_t i = 0; i < VariablesCount * 2; i += 2) {
+      // both p and ~p in resolved formula
+      if (resolved[i] && resolved[i + 1]) {
+        opposite_bit_index = i;
+        ++opposite_count;
+      }
+      if (opposite_count >= 2) {
+        return false;
+      }
+    }
+
+    if (opposite_count != 1) {
+      return false;
+    }
+
+    resolved[opposite_bit_index] = false;
+    resolved[opposite_bit_index + 1] = false;
+
+    return true;
+  }
+
   bool IsSatisfiable() {
     FillQueue();
 
-    while (!queue_.empty()) {
+    while (!queue_.empty() && !queue_.contains(kEmptyDisjunct)) {
       auto current = queue_.begin();
-      DisjunctionPair disjunction = *current;
+      DisjunctionT resolved = *current;
       queue_.erase(current);
 
       // if we obtained empty conjunction
-      if (disjunction.resolved_size == 0) {
+      if (resolved == 0) {
         return false;
       }
 
-      for (auto itr = disjunctions_.begin(); itr != disjunctions_.end();
-           ++itr) {
-        AddPairToQueue(disjunction.resolution_result, *itr);
+      for (auto& disjunction : disjunctions_) {
+        AddPairToQueue(resolved, disjunction);
       }
 
-      disjunctions_.insert(disjunction.resolution_result);
+      disjunctions_.insert(resolved);
     }
 
-    return true;
+    return queue_.empty();
   }
 };
 

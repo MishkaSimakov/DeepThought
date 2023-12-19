@@ -34,6 +34,8 @@ class ConjunctiveNormalForm {
  public:
   ConjunctiveNormalForm() = default;
 
+  bool operator==(const ConjunctiveNormalForm&) const = default;
+
   void AddDisjunction(const DisjunctionT& disjunction) {
     disjunctions_.insert(disjunction);
   }
